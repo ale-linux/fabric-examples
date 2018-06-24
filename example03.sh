@@ -1,6 +1,8 @@
 #!/bin/bash
 
-set -xe
+set -e
+
+source $(dirname $0)/common.sh
 
 curDir=$PWD
 trap cleanup EXIT
@@ -211,12 +213,16 @@ networks:
     name: fabric-net
 EOF
 
-$GENCERTS_CMD $artifactsDir $ordererOrg orderer
+runStep $GENCERTS_CMD $artifactsDir $ordererOrg orderer
 $GENCERTS_CMD $artifactsDir $applicationOrg peer gw
 
 # generating genesis block (main channel)
 $CONFIGTXGEN_CMD -profile TwoOrgsOrdererGenesis -outputBlock $ordBlockMain --configPath $artifactsDir
-$CONFIGTXGEN_CMD -profile TwoOrgsChannel -outputCreateChannelTx $genTransMain -channelID $ChannelName --configPath $artifactsDir
+
+echo "$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config.channel_group.groups.Consortiums.groups.SampleConsortium.groups.${applicationOrg}.values"
+echo "$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config.channel_group.groups.Orderer.groups.${ordererOrg}.values"
+
+runStep $CONFIGTXGEN_CMD -profile TwoOrgsChannel -outputCreateChannelTx $genTransMain -channelID $ChannelName --configPath $artifactsDir
 
 killall -9 peer || true
 docker ps -a | awk '{print $1}' | xargs docker kill || true

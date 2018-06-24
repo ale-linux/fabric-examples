@@ -1,6 +1,8 @@
 #!/bin/bash
 
-set -xe
+set -e
+
+source $(dirname $0)/common.sh
 
 curDir=$PWD
 trap cleanup EXIT
@@ -274,7 +276,7 @@ docker ps -a | awk '{print $1}' | xargs docker kill || true
 docker ps -a | awk '{print $1}' | xargs docker rm || true
 docker network rm fabric-net || true
 docker image ls | grep $CCName | awk '{print $3}' | xargs docker rmi -f || true
-docker-compose -f $dockerComposeFile up -d
+runStep docker-compose -f $dockerComposeFile up -d
 
 sleep .2
 
@@ -299,7 +301,7 @@ configUpdateEnvelopePb=$artifactsDir/config_block_update_in_envelope.pb
 
 cryptoMatNewOrgJson=$artifactsDir/cryptomat.json
 
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/gw \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/gw \
 $PEER_CMD channel fetch config $configBlockOrigPb -o myordererorg:7050 -c $ChannelName
 
 $CONFIGTXLTR_CMD proto_decode --input $configBlockOrigPb --type common.Block | jq .data.data[0].payload.data.config > $configBlockOrigJson
@@ -309,10 +311,10 @@ $CONFIGTXGEN_CMD -printOrg $newApplicationOrg > $cryptoMatNewOrgJson
 
 jq -s '.[0] * {"channel_group":{"groups":{"Application":{"groups": {"'${newApplicationOrg}'":.[1]}}}}}' $configBlockOrigJson $cryptoMatNewOrgJson > $configBlockNewJson
 
-$CONFIGTXLTR_CMD proto_encode --input $configBlockOrigJson --type common.Config --output $configBlockOrigPb
-$CONFIGTXLTR_CMD proto_encode --input $configBlockNewJson --type common.Config --output $configBlockNewPb
+runStep $CONFIGTXLTR_CMD proto_encode --input $configBlockOrigJson --type common.Config --output $configBlockOrigPb
+runStep $CONFIGTXLTR_CMD proto_encode --input $configBlockNewJson --type common.Config --output $configBlockNewPb
 
-$CONFIGTXLTR_CMD compute_update --channel_id $ChannelName --original $configBlockOrigPb --updated $configBlockNewPb --output $configBlockUpdatePb
+runStep $CONFIGTXLTR_CMD compute_update --channel_id $ChannelName --original $configBlockOrigPb --updated $configBlockNewPb --output $configBlockUpdatePb
 
 $CONFIGTXLTR_CMD proto_decode --input $configBlockUpdatePb --type common.ConfigUpdate | jq . > $configBlockUpdateJson
 
@@ -320,17 +322,20 @@ echo '{"payload":{"header":{"channel_header":{"channel_id":"'${ChannelName}'", "
 
 $CONFIGTXLTR_CMD proto_encode --input $configUpdateEnvelopeJson --type common.Envelope --output $configUpdateEnvelopePb
 
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/gw \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/gw \
 $PEER_CMD channel signconfigtx -f $configUpdateEnvelopePb
 
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/gw \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/gw \
+$PEER_CMD channel fetch 0 mychannel.block -c $ChannelName || true
+
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/gw \
 $PEER_CMD channel update -f $configUpdateEnvelopePb -c $ChannelName -o 127.0.0.1:7050
 
 sleep 6
 
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/gw \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/gw \
 $PEER_CMD channel fetch 0 mychannel.block -c $ChannelName
 
 # joining channel
-env CORE_PEER_ADDRESS=127.0.0.1:8051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/gw \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:8051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/gw \
 $PEER_CMD channel join -b mychannel.block

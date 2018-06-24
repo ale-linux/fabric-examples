@@ -36,6 +36,7 @@ CONFIGTXGEN_CMD=$fabricDir/.build/bin/configtxgen
 CONFIGTXLTR_CMD=$fabricDir/.build/bin/configtxlator
 PEER_CMD=$fabricDir/.build/bin/peer
 CRYPTOGEN_CMD=$fabricDir/.build/bin/cryptogen
+BLOCKPARSER_CMD=$(readlink -f $(dirname $0))/blockparser
 
 configtxgenFile=$artifactsDir/configtx.yaml
 cat <<- EOF > $configtxgenFile
@@ -233,7 +234,7 @@ networks:
 EOF
 
 cd $artifactsDir
-runStep $CRYPTOGEN_CMD generate --config=$cryptogenCfgFile
+$CRYPTOGEN_CMD generate --config=$cryptogenCfgFile
 
 cd $curDir
 
@@ -259,23 +260,26 @@ env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_P
 $PEER_CMD channel join -b $genBlockMain
 
 # install chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
 $PEER_CMD chaincode install -n $CCName -v 1 -p github.com/hyperledger/fabric/examples/chaincode/go/map
 
 # instantiate chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
 $PEER_CMD chaincode instantiate -C $ChannelName -n $CCName -v 1 -c '{"Args":[""]}' #-V myvscc
 
 sleep 1
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c '{"Args":["get","foo"]}'
 
 # invoke chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
-$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["put", "foo", "bar"]}'
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["put","foo","bar"]}'
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
-$PEER_CMD chaincode query -n $CCName -C $ChannelName  -c'{"Args":["get","foo"]}'
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD chaincode query -n $CCName -C $ChannelName  -c '{"Args":["get","foo"]}'
+
+echo "env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD channel fetch 1 /dev/stdout -c my-ch | $BLOCKPARSER_CMD"

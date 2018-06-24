@@ -1,6 +1,8 @@
 #!/bin/bash
 
-set -xe
+set -e
+
+source $(dirname $0)/common.sh
 
 curDir=$PWD
 trap cleanup EXIT
@@ -37,6 +39,7 @@ CONFIGTXLTR_CMD=$fabricDir/.build/bin/configtxlator
 PEER_CMD=$fabricDir/.build/bin/peer
 CRYPTOGEN_CMD=$fabricDir/.build/bin/cryptogen
 IDEMIXGEN_CMD=$fabricDir/.build/bin/idemixgen
+BLOCKPARSER_CMD=$(readlink -f $(dirname $0))/blockparser
 
 configtxgenFile=$artifactsDir/configtx.yaml
 cat <<- EOF > $configtxgenFile
@@ -256,8 +259,8 @@ EOF
 
 mkdir -p $idemixOrgDir
 cd $idemixOrgDir
-$IDEMIXGEN_CMD ca-keygen
-$IDEMIXGEN_CMD signerconfig -u OU1 -e OU1 -r 1
+runStep $IDEMIXGEN_CMD ca-keygen
+runStep $IDEMIXGEN_CMD signerconfig -u OU1 -e OU1 -r 1
 
 cd $artifactsDir
 $CRYPTOGEN_CMD generate --config=$cryptogenCfgFile
@@ -266,7 +269,12 @@ cd $curDir
 
 # generating genesis block (main channel)
 $CONFIGTXGEN_CMD -profile TwoOrgsOrdererGenesis -outputBlock $ordBlockMain --configPath $artifactsDir
-$CONFIGTXGEN_CMD -profile TwoOrgsChannel -outputCreateChannelTx $genTransMain -channelID $ChannelName --configPath $artifactsDir
+
+echo "$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config.channel_group.groups.Consortiums.groups.SampleConsortium.groups.${applicationOrg}.values"
+echo "$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config.channel_group.groups.Consortiums.groups.SampleConsortium.groups.${idemixOrg}.values"
+echo "$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config.channel_group.groups.Orderer.groups.${ordererOrg}.values"
+
+runStep $CONFIGTXGEN_CMD -profile TwoOrgsChannel -outputCreateChannelTx $genTransMain -channelID $ChannelName --configPath $artifactsDir
 
 killall -9 peer || true
 docker ps -a | awk '{print $1}' | xargs docker kill || true
@@ -300,7 +308,7 @@ env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_P
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c '{"Args":["get","foo"]}'
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPTYPE=idemix \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPTYPE=idemix \
 CORE_PEER_LOCALMSPID=$idemixOrg CORE_PEER_MSPCONFIGPATH=$idemixOrgDir/idemix-config \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c '{"Args":["get","foo"]}'
 
@@ -311,17 +319,20 @@ $PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["put", "foo"
 sleep .7
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPTYPE=idemix \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPTYPE=idemix \
 CORE_PEER_LOCALMSPID=$idemixOrg CORE_PEER_MSPCONFIGPATH=$idemixOrgDir/idemix-config \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c '{"Args":["get","foo"]}'
 
 # invoke chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPTYPE=idemix \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPTYPE=idemix \
 CORE_PEER_LOCALMSPID=$idemixOrg CORE_PEER_MSPCONFIGPATH=$idemixOrgDir/idemix-config \
 $PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["put","foo","barprime"]}' -o 127.0.0.1:7050
 
 sleep .7
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c'{"Args":["get","foo"]}'
+
+echo "env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD channel fetch 1 /dev/stdout -c my-ch | $BLOCKPARSER_CMD"

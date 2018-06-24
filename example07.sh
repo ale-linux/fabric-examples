@@ -1,6 +1,8 @@
 #!/bin/bash
 
-set -xe
+set -e
+
+source $(dirname $0)/common.sh
 
 curDir=$PWD
 trap cleanup EXIT
@@ -37,6 +39,7 @@ CONFIGTXGEN_CMD=$fabricDir/.build/bin/configtxgen
 CONFIGTXLTR_CMD=$fabricDir/.build/bin/configtxlator
 PEER_CMD=$fabricDir/.build/bin/peer
 CRYPTOGEN_CMD=$fabricDir/.build/bin/cryptogen
+BLOCKPARSER_CMD=$(readlink -f $(dirname $0))/blockparser
 
 configtxgenFile=$artifactsDir/configtx.yaml
 cat <<- EOF > $configtxgenFile
@@ -349,7 +352,7 @@ docker ps -a | awk '{print $1}' | xargs docker kill || true
 docker ps -a | awk '{print $1}' | xargs docker rm || true
 docker network rm fabric-net || true
 docker image ls | grep $CCName | awk '{print $3}' | xargs docker rmi -f || true
-docker-compose -f $dockerComposeFile up -d
+runStep docker-compose -f $dockerComposeFile up -d
 
 sleep .2
 
@@ -378,7 +381,7 @@ env CORE_PEER_ADDRESS=127.0.0.1:8051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_P
 $PEER_CMD chaincode install -n $CCName -v 1 -p github.com/hyperledger/fabric/examples/chaincode/go/map
 
 # install chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:9051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/users/Admin@mynewapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:9051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/users/Admin@mynewapplicationorg/msp/ \
 $PEER_CMD chaincode install -n $CCName -v 1 -p github.com/hyperledger/fabric/examples/chaincode/go/map
 
 # instantiate chaincode
@@ -392,37 +395,40 @@ env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_P
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c '{"Args":["get","foo"]}'
 
 # invoke chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
-$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["put", "foo", "bar"]}'
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["put","foo","bar"]}'
 
 sleep 1
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c'{"Args":["get","foo"]}'
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:8051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:8051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c'{"Args":["get","foo"]}'
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:9051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/users/User1@mynewapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:9051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/users/User1@mynewapplicationorg/msp/ \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c'{"Args":["get","foo"]}'
 
 # invoke chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
 $PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c "{\"Args\":[\"putPrivate\",\"$CollName\",\"fooprivate\",\"barprivate\"]}"
 
 sleep 1
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c "{\"Args\":[\"getPrivate\",\"$CollName\",\"fooprivate\"]}"
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:8051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:8051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
 $PEER_CMD chaincode query -n $CCName -C $ChannelName  -c "{\"Args\":[\"getPrivate\",\"$CollName\",\"fooprivate\"]}"
 
 # query chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:9051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/users/User1@mynewapplicationorg/msp/ \
-$PEER_CMD chaincode query -n $CCName -C $ChannelName  -c "{\"Args\":[\"getPrivate\",\"$CollName\",\"fooprivate\"]}"
+runStep env CORE_PEER_ADDRESS=127.0.0.1:9051 CORE_PEER_LOCALMSPID=$newApplicationOrg CORE_PEER_MSPCONFIGPATH=$newApplicationOrgDir/users/User1@mynewapplicationorg/msp/ \
+$PEER_CMD chaincode query -n $CCName -C $ChannelName  -c "{\"Args\":[\"getPrivate\",\"$CollName\",\"fooprivate\"]}" || true
+
+echo "env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD channel fetch 1 /dev/stdout -c my-ch | $BLOCKPARSER_CMD"

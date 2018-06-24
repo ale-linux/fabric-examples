@@ -185,4 +185,5 @@ cd $curDir
 # generating genesis block (main channel)
 runStep $CONFIGTXGEN_CMD -profile TwoOrgsOrdererGenesis -outputBlock $ordBlockMain --configPath $artifactsDir
 
-$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config
+echo "$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config.channel_group.groups.Consortiums.groups.SampleConsortium.groups.${applicationOrg}.values"
+echo "$CONFIGTXLTR_CMD proto_decode --input $ordBlockMain --type common.Block | jq .data.data[0].payload.data.config.channel_group.groups.Orderer.groups.${ordererOrg}.values"

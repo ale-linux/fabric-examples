@@ -1,6 +1,8 @@
 #!/bin/bash
 
-set -xe
+set -e
+
+source $(dirname $0)/common.sh
 
 curDir=$PWD
 trap cleanup EXIT
@@ -257,26 +259,26 @@ env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_P
 $PEER_CMD channel join -b $genBlockMain
 
 # install chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
 $PEER_CMD chaincode install -n $CCName -v 1 -p github.com/hyperledger/fabric/examples/chaincode/go/enccc_example/
 
 # instantiate chaincode
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/Admin@myapplicationorg/msp/ \
 $PEER_CMD chaincode instantiate -C $ChannelName -n $CCName -v 1 -c '{"Args":[""]}' #-V myvscc
 
 sleep 1
 
 ENCKEY=`openssl rand 32 -base64` && DECKEY=$ENCKEY
 
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
-$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["ENCRYPT", "foo", "bar"]}' --transient "{\"ENCKEY\":\"$ENCKEY\"}"
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["ENCRYPT","foo","bar"]}' --transient "{\"ENCKEY\":\"$ENCKEY\"}"
 
 sleep 1
 
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
-$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["DECRYPT", "foo"]}' --transient "{\"DECKEY\":\"$DECKEY\"}"
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["DECRYPT","foo"]}' --transient "{\"DECKEY\":\"$DECKEY\"}"
 
 DECKEY=`openssl rand 32 -base64`
 
-env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
-$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["DECRYPT", "foo"]}' --transient "{\"DECKEY\":\"$DECKEY\"}"
+runStep env CORE_PEER_ADDRESS=127.0.0.1:7051 CORE_PEER_LOCALMSPID=$applicationOrg CORE_PEER_MSPCONFIGPATH=$applicationOrgDir/users/User1@myapplicationorg/msp/ \
+$PEER_CMD chaincode invoke -n $CCName -C $ChannelName  -c '{"Args":["DECRYPT","foo"]}' --transient "{\"DECKEY\":\"$DECKEY\"}"
